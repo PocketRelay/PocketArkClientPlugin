@@ -28,27 +28,27 @@ pub struct LoginPartial {
 
     /// Label for the email
     #[nwg_control(text: "Email")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 2, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 0, col_span: 2)]
     email_label: Label,
 
     /// Input for the email
     #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 3, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 1, col_span: 2)]
     email_input: TextInput,
 
     /// Label for the password
     #[nwg_control(text: "Password")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 6, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 2, col_span: 2)]
     password_label: Label,
 
     /// Input for the password
     #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 7, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 3, col_span: 2)]
     password_input: TextInput,
 
     /// Button for logging in
     #[nwg_control(text: "Login")]
-    #[nwg_layout_item(layout: grid, col: 2, row: 9, col_span: 1)]
+    #[nwg_layout_item(layout: grid, col: 2, row: 4, col_span: 1)]
     login_button: Button,
 }
 
@@ -60,37 +60,37 @@ pub struct CreatePartial {
 
     /// Label for the email
     #[nwg_control(text: "Email")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 2, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 0, col_span: 2)]
     email_label: Label,
 
     /// Input for the email
     #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 3, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 1, col_span: 2)]
     email_input: TextInput,
 
     /// Label for the username
     #[nwg_control(text: "Username")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 4, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 2, col_span: 2)]
     username_label: Label,
 
     /// Input for the username
     #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 5, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 3, col_span: 2)]
     username_input: TextInput,
 
     /// Label for the password
     #[nwg_control(text: "Password")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 6, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 4, col_span: 2)]
     password_label: Label,
 
     /// Input for the password
     #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 7, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 5, col_span: 2)]
     password_input: TextInput,
 
     /// Button for logging in
     #[nwg_control(text: "Create")]
-    #[nwg_layout_item(layout: grid, col: 2, row: 9, col_span: 1)]
+    #[nwg_layout_item(layout: grid, col: 2, row: 6, col_span: 1)]
     create_button: Button,
 }
 
@@ -148,7 +148,7 @@ pub struct App {
     connect_notice: Notice,
 
     #[nwg_control]
-    #[nwg_layout_item(layout: grid, col: 0, row: 5, col_span: 3)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 5, col_span: 3, row_span: 5)]
     frame1: Frame,
 
     #[nwg_partial(parent: frame1)]
@@ -156,7 +156,7 @@ pub struct App {
     login_ui: LoginPartial,
 
     #[nwg_control]
-    #[nwg_layout_item(layout: grid, col: 0, row: 6, col_span: 3)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 6, col_span: 3, row_span: 6)]
     frame2: Frame,
 
     #[nwg_partial(parent: frame2)]
@@ -181,9 +181,13 @@ impl App {
         if self.frame1.visible() {
             self.frame1.set_visible(false);
             self.frame2.set_visible(true);
+            self.grid.remove_child(&self.frame1);
+            self.grid.add_child(0, 6, &self.frame2);
         } else {
             self.frame1.set_visible(true);
             self.frame2.set_visible(false);
+            self.grid.remove_child(&self.frame2);
+            self.grid.add_child(0, 6, &self.frame1);
         }
     }
 
@@ -300,6 +304,8 @@ pub fn init(config: Option<ClientConfig>, client: Client) {
         ..Default::default()
     })
     .expect("Failed to build native UI");
+
+    app.swap_ui();
 
     let (target, remember) = config
         .map(|value| (value.connection_url, true))
