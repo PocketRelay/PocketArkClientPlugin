@@ -1,0 +1,58 @@
+[package]
+name = "pocket-ark-client-plugin"
+version = "0.0.1"
+edition = "2021"
+description = "ASI plugin for MEA to connect to Pocket Ark servers"
+repository = "https://github.com/PocketRelay/PocketArkClientPlugin"
+license = "MIT"
+readme = "README.md"
+authors = ["Jacobtread <jacobtread@gmail.com>"]
+keywords = ["Hooking"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pocket-ark-client-shared = { version = "0.1", path = "../pocket-ark-client-shared" }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Native file picker dialog
+native-dialog = "0.7.0"
+
+thiserror = "1"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# Iced GUI framework variant
+[dependencies.iced]
+version = "0.10"
+default-features = false
+features = ["image", "tokio"]
+
+[dependencies.windows-sys]
+version = "0.48"
+features = [
+    "Win32_Foundation",
+    "Win32_System_SystemServices",
+    "Win32_System_Memory",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Console",
+    "Win32_Networking_WinSock",
+]
+
+# Compile x86
+# cargo build --release
+
+# Compile std to reduce size:
+# cargo +nightly build -Z build-std=std,panic_abort --release --target x86_64-pc-windows-msvc
+# [profile.release]
+# opt-level = "z"
+# codegen-units = 1
+# panic = "abort"
+# strip = true
+# lto = true
