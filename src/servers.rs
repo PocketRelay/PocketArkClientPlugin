@@ -1,6 +1,6 @@
 use crate::{
     core::{api::AuthToken, reqwest, servers::*, ssl::create_ssl_context, Url},
-    ui::show_error,
+    ui::error_message,
 };
 use log::error;
 use std::sync::Arc;
@@ -27,7 +27,7 @@ pub fn start_all_servers(
     // Spawn the Redirector server
     spawn_server_task(async move {
         if let Err(err) = redirector::start_redirector_server(a).await {
-            show_error("Failed to start redirector server", &err.to_string());
+            error_message("Failed to start redirector server", &err.to_string());
             error!("Failed to start redirector server: {}", err);
         }
     });
@@ -43,7 +43,7 @@ pub fn start_all_servers(
     // Spawn the Blaze server
     spawn_server_task(async move {
         if let Err(err) = blaze::start_blaze_server(a, b, c, d).await {
-            show_error("Failed to start blaze server", &err.to_string());
+            error_message("Failed to start blaze server", &err.to_string());
             error!("Failed to start blaze server: {}", err);
         }
     });
@@ -54,7 +54,7 @@ pub fn start_all_servers(
     // Spawn the HTTP server
     spawn_server_task(async move {
         if let Err(err) = http::start_http_server(a, b, ssl_context, token).await {
-            show_error("Failed to start http server", &err.to_string());
+            error_message("Failed to start http server", &err.to_string());
             error!("Failed to start http server: {}", err);
         }
     });
@@ -64,7 +64,7 @@ pub fn start_all_servers(
     // Spawn the tunneling server (Not supported yet)
     // spawn_server_task(async move {
     //     if let Err(err) = tunnel::start_tunnel_server(a, b, association).await {
-    //         show_error("Failed to start tunnel server", &err.to_string());
+    //         error_message("Failed to start tunnel server", &err.to_string());
     //         error!("Failed to start tunnel server: {}", err);
     //     }
     // });
@@ -72,7 +72,7 @@ pub fn start_all_servers(
     // Spawn the QoS server
     spawn_server_task(async move {
         if let Err(err) = qos::start_qos_server().await {
-            show_error("Failed to start qos server", &err.to_string());
+            error_message("Failed to start qos server", &err.to_string());
             error!("Failed to start qos server: {}", err);
         }
     });

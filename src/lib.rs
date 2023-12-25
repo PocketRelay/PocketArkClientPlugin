@@ -9,7 +9,7 @@ use core::{
 use log::error;
 use pocket_ark_client_shared as core;
 use std::path::Path;
-use ui::{show_confirm, show_error};
+use ui::{confirm_message, error_message};
 use windows_sys::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
 
 pub mod config;
@@ -70,7 +70,7 @@ fn load_identity() -> Option<reqwest::Identity> {
     let identity_file = Path::new("pocket-ark-identity.p12");
 
     // Handle no identity or user declining identity
-    if !identity_file.exists() || !show_confirm(
+    if !identity_file.exists() || !confirm_message(
         "Found client identity",
         "Detected client identity pocket-ark-identity.p12, would you like to use this identity?",
     ) {
@@ -82,7 +82,7 @@ fn load_identity() -> Option<reqwest::Identity> {
         Ok(value) => Some(value),
         Err(err) => {
             error!("Failed to set client identity: {}", err);
-            show_error("Failed to set client identity", &err.to_string());
+            error_message("Failed to set client identity", &err.to_string());
             None
         }
     }

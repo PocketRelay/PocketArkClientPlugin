@@ -1,4 +1,4 @@
-use crate::ui::show_error;
+use crate::ui::error_message;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::{env::current_exe, path::PathBuf};
@@ -36,7 +36,7 @@ pub fn read_config_file() -> Option<ClientConfig> {
     let bytes = match std::fs::read(file_path) {
         Ok(value) => value,
         Err(err) => {
-            show_error("Failed to read client config", &err.to_string());
+            error_message("Failed to read client config", &err.to_string());
             return None;
         }
     };
@@ -45,7 +45,7 @@ pub fn read_config_file() -> Option<ClientConfig> {
     match serde_json::from_slice(&bytes) {
         Ok(value) => Some(value),
         Err(err) => {
-            show_error("Failed to parse client config", &err.to_string());
+            error_message("Failed to parse client config", &err.to_string());
             None
         }
     }
@@ -58,12 +58,12 @@ pub fn write_config_file(config: ClientConfig) {
     let bytes = match serde_json::to_vec(&config) {
         Ok(value) => value,
         Err(err) => {
-            show_error("Failed to save client config", &err.to_string());
+            error_message("Failed to save client config", &err.to_string());
             return;
         }
     };
     debug!("Writing config file");
     if let Err(err) = std::fs::write(file_path, bytes) {
-        show_error("Failed to save client config", &err.to_string());
+        error_message("Failed to save client config", &err.to_string());
     }
 }
