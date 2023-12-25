@@ -28,11 +28,16 @@ thiserror = "1"
 log = "0.4"
 env_logger = "0.10"
 
-# Iced GUI framework variant
-[dependencies.iced]
-version = "0.10"
-default-features = false
-features = ["image", "tokio"]
+# Native GUI building
+native-windows-gui = { version = "1", features = ["notice"] }
+native-windows-derive = { version = "1" }
+
+futures = "0.3"
+
+# Tokio async runtime
+[dependencies.tokio]
+version = "1"
+features = ["full"]
 
 [dependencies.windows-sys]
 version = "0.48"
