@@ -1,25 +1,80 @@
 use crate::{
     config::{write_config_file, ClientConfig},
     core::{
-        api::{lookup_server, LookupData, LookupError},
+        api::{lookup_server, LookupData},
         reqwest::Client,
-        servers::{has_server_tasks, stop_server_tasks},
+        servers::stop_server_tasks,
     },
     servers::start_all_servers,
 };
-use futures::FutureExt;
 use native_windows_derive::{NwgPartial, NwgUi};
 use native_windows_gui::{init as nwg_init, *};
-use std::cell::RefCell;
-use tokio::task::JoinHandle;
+use parking_lot::Mutex;
+use pocket_ark_client_shared::{
+    api::{create_user, login_user, AuthToken, CreateUserRequest, LoginUserRequest},
+    Url,
+};
+use std::{cell::RefCell, sync::Arc};
 
 /// Size of the created window
-pub const WINDOW_SIZE: (i32, i32) = (500, 700);
+pub const WINDOW_SIZE: (i32, i32) = (500, 400);
 /// Title used for the created window
 pub const WINDOW_TITLE: &str = concat!("Pocket Ark Client v", env!("CARGO_PKG_VERSION"));
 /// Window icon bytes
 pub const ICON_BYTES: &[u8] = include_bytes!("resources/icon.ico");
 
+/// Partial UI for the connect screen
+#[derive(NwgPartial, Default)]
+pub struct ConnectPartial {
+    /// Grid layout for all the content
+    #[nwg_layout]
+    grid: GridLayout,
+
+    /// Label for the connection URL input
+    #[nwg_control(text: "Please put the server Connection URL below and press 'Set'")]
+    #[nwg_layout_item(layout: grid, row: 0)]
+    target_url_label: Label,
+
+    /// Input for the connection URL
+    #[nwg_control(focus: true)]
+    #[nwg_layout_item(layout: grid, row: 1)]
+    target_url_input: TextInput,
+
+    /// Button for connecting
+    #[nwg_control(text: "Set")]
+    #[nwg_layout_item(layout: grid,  row: 2)]
+    connect_button: Button,
+
+    /// Checkbox for whether to remember the connection URL
+    #[nwg_control(text: "Save connection URL")]
+    #[nwg_layout_item(layout: grid,row: 3)]
+    remember_checkbox: CheckBox,
+
+    /// Label for the state
+    #[nwg_control(text: "Disconnected")]
+    #[nwg_layout_item(layout: grid, row: 4)]
+    connecting_label: Label,
+}
+
+/// Partial UI for the running state
+#[derive(NwgPartial, Default)]
+pub struct RunningPartial {
+    /// Grid layout for all the content
+    #[nwg_layout]
+    grid: GridLayout,
+
+    /// Connection state label
+    #[nwg_control(text: "Connected")]
+    #[nwg_layout_item(layout: grid, row: 0)]
+    state_label: Label,
+
+    /// Button for disconnecting
+    #[nwg_control(text: "Disconnect")]
+    #[nwg_layout_item(layout: grid, row: 1)]
+    disconnect_button: Button,
+}
+
+/// Partial UI for the login screen
 #[derive(NwgPartial, Default)]
 pub struct LoginPartial {
     /// Grid layout for all the content
@@ -28,30 +83,41 @@ pub struct LoginPartial {
 
     /// Label for the email
     #[nwg_control(text: "Email")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 0, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 0)]
     email_label: Label,
 
     /// Input for the email
     #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 1, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 1)]
     email_input: TextInput,
 
     /// Label for the password
     #[nwg_control(text: "Password")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 2, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 2)]
     password_label: Label,
 
     /// Input for the password
-    #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 3, col_span: 2)]
+    #[nwg_control(password: Some('*'))]
+    #[nwg_layout_item(layout: grid, row: 3)]
     password_input: TextInput,
 
     /// Button for logging in
     #[nwg_control(text: "Login")]
-    #[nwg_layout_item(layout: grid, col: 2, row: 4, col_span: 1)]
+    #[nwg_layout_item(layout: grid, row: 4)]
     login_button: Button,
+
+    /// Label for the state
+    #[nwg_control(text: "Not authenticated")]
+    #[nwg_layout_item(layout: grid, row: 5)]
+    state_label: Label,
+
+    /// Button for logging instead
+    #[nwg_control(text: "Don't have an account? Create")]
+    #[nwg_layout_item(layout: grid, row: 6)]
+    swap_button: Button,
 }
 
+/// Partial UI for the create account screen
 #[derive(NwgPartial, Default)]
 pub struct CreatePartial {
     /// Grid layout for all the content
@@ -60,38 +126,48 @@ pub struct CreatePartial {
 
     /// Label for the email
     #[nwg_control(text: "Email")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 0, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 0)]
     email_label: Label,
 
     /// Input for the email
     #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 1, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 1)]
     email_input: TextInput,
 
     /// Label for the username
     #[nwg_control(text: "Username")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 2, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 2)]
     username_label: Label,
 
     /// Input for the username
-    #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 3, col_span: 2)]
+    #[nwg_control(limit: 16)]
+    #[nwg_layout_item(layout: grid, row: 3)]
     username_input: TextInput,
 
     /// Label for the password
     #[nwg_control(text: "Password")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 4, col_span: 2)]
+    #[nwg_layout_item(layout: grid, row: 4)]
     password_label: Label,
 
     /// Input for the password
-    #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 5, col_span: 2)]
+    #[nwg_control(limit: 99, password: Some('*'))]
+    #[nwg_layout_item(layout: grid, row: 5)]
     password_input: TextInput,
 
     /// Button for logging in
     #[nwg_control(text: "Create")]
-    #[nwg_layout_item(layout: grid, col: 2, row: 6, col_span: 1)]
+    #[nwg_layout_item(layout: grid, row: 6)]
     create_button: Button,
+
+    /// Label for the state
+    #[nwg_control(text: "Not authenticated")]
+    #[nwg_layout_item(layout: grid, row: 7)]
+    state_label: Label,
+
+    /// Button for logging instead
+    #[nwg_control(text: "Already have an account? Login")]
+    #[nwg_layout_item(layout: grid, row: 8)]
+    swap_button: Button,
 }
 
 /// Native GUI app
@@ -116,161 +192,332 @@ pub struct App {
     #[nwg_layout(parent: window)]
     grid: GridLayout,
 
-    /// Label for the connection URL input
-    #[nwg_control(text: "Please put the server Connection URL below and press 'Set'")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 0, col_span: 2)]
-    target_url_label: Label,
-
-    /// Input for the connection URL
-    #[nwg_control(focus: true)]
-    #[nwg_layout_item(layout: grid, col: 0, row: 1, col_span: 2)]
-    target_url_input: TextInput,
-
-    /// Button for connecting
-    #[nwg_control(text: "Set")]
-    #[nwg_layout_item(layout: grid, col: 2, row: 2, col_span: 1)]
-    #[nwg_events(OnButtonClick: [App::handle_set])]
-    set_button: Button,
-
-    /// Checkbox for whether to remember the connection URL
-    #[nwg_control(text: "Save connection URL")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 3, col_span: 3)]
-    remember_checkbox: CheckBox,
-
-    /// Connection state label
-    #[nwg_control(text: "Not connected")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 4, col_span: 3)]
-    connection_label: Label,
-
-    /// Notice for connection completion
+    /// Frame for the connect UI
     #[nwg_control]
-    #[nwg_events(OnNotice: [App::handle_connect_notice])]
-    connect_notice: Notice,
+    #[nwg_layout_item(layout: grid)]
+    connect_frame: Frame,
 
+    /// Connection UI
+    #[nwg_partial(parent: connect_frame)]
+    #[nwg_events((connect_button, OnButtonClick): [App::handle_connect])]
+    connect_ui: ConnectPartial,
+
+    /// Frame for the login UI
     #[nwg_control]
-    #[nwg_layout_item(layout: grid, col: 0, row: 5, col_span: 3, row_span: 5)]
-    frame1: Frame,
+    #[nwg_layout_item(layout: grid)]
+    login_frame: Frame,
 
-    #[nwg_partial(parent: frame1)]
-    #[nwg_events( (login_button, OnButtonClick): [App::handle_login] )]
+    /// Login UI
+    #[nwg_partial(parent: login_frame)]
+    #[nwg_events(
+        (login_button, OnButtonClick): [App::handle_login],
+        (swap_button, OnButtonClick): [App::swap_auth_state],
+    )]
     login_ui: LoginPartial,
 
+    /// Frame for the create UI
     #[nwg_control]
-    #[nwg_layout_item(layout: grid, col: 0, row: 6, col_span: 3, row_span: 6)]
-    frame2: Frame,
+    #[nwg_layout_item(layout: grid)]
+    create_frame: Frame,
 
-    #[nwg_partial(parent: frame2)]
-    #[nwg_events( (create_button, OnButtonClick): [App::handle_create] )]
+    /// Create UI
+    #[nwg_partial(parent: create_frame)]
+    #[nwg_events(
+        (create_button, OnButtonClick): [App::handle_create],
+        (swap_button, OnButtonClick): [App::swap_auth_state],
+    )]
     create_ui: CreatePartial,
 
-    /// Button for connecting
-    #[nwg_control(text: "Swap UI")]
-    #[nwg_layout_item(layout: grid, col: 0, row: 7, col_span: 1)]
-    #[nwg_events(OnButtonClick: [App::swap_ui])]
-    swap_button: Button,
+    /// Frame for the running UI
+    #[nwg_control]
+    #[nwg_layout_item(layout: grid)]
+    running_frame: Frame,
 
-    /// Join handle for the connect task
-    connect_task: RefCell<Option<JoinHandle<Result<LookupData, LookupError>>>>,
+    /// Running UI
+    #[nwg_partial(parent: running_frame)]
+    #[nwg_events((disconnect_button, OnButtonClick): [App::handle_disconnect])]
+    running_ui: RunningPartial,
+
+    /// Current state of the app
+    app_state: RefCell<AppState>,
+
+    /// Shared reference for an optional next state decided by
+    /// some other thread or callback
+    next_state: Arc<Mutex<Option<AppState>>>,
+
+    /// Notice for when [App::next_state] is changed
+    #[nwg_control]
+    #[nwg_events(OnNotice: [App::handle_next_state])]
+    next_state_notice: Notice,
 
     /// Http client for sending requests
     http_client: Client,
 }
 
+#[derive(Default)]
+enum AppState {
+    /// Connecting state
+    #[default]
+    Connect,
+    /// Logging in state
+    Login {
+        /// Current lookup data
+        lookup_data: LookupData,
+    },
+    /// Creating account state
+    Create {
+        /// Current lookup data
+        lookup_data: LookupData,
+    },
+    /// Running state
+    Running {
+        /// Current lookup data
+        lookup_data: LookupData,
+        /// Current authentication token
+        auth_token: AuthToken,
+    },
+}
+
 impl App {
-    fn swap_ui(&self) {
-        if self.frame1.visible() {
-            self.frame1.set_visible(false);
-            self.frame2.set_visible(true);
-            self.grid.remove_child(&self.frame1);
-            self.grid.add_child(0, 6, &self.frame2);
-        } else {
-            self.frame1.set_visible(true);
-            self.frame2.set_visible(false);
-            self.grid.remove_child(&self.frame2);
-            self.grid.add_child(0, 6, &self.frame1);
+    /// Handles changing to a new state provided by an
+    /// external thread
+    fn handle_next_state(&self) {
+        let Some(next_state) = self.next_state.lock().take() else {
+            return;
+        };
+
+        // Handle setting up the next state
+        match &next_state {
+            AppState::Connect => {}
+            AppState::Login { .. } => {}
+            AppState::Create { .. } => {}
+            AppState::Running {
+                lookup_data,
+                auth_token,
+            } => {
+                // TODO: Update connection state
+
+                // Start all the servers
+                start_all_servers(
+                    self.http_client.clone(),
+                    lookup_data.url.clone(),
+                    Arc::new(None),
+                    auth_token.clone(),
+                );
+            }
+        }
+
+        self.set_app_state(next_state);
+    }
+
+    /// Swaps the current authentication state to the opposite
+    /// (i.e Login -> Create, Create -> Login)
+    fn swap_auth_state(&self) {
+        let next_state = match &*self.app_state.borrow() {
+            AppState::Login { lookup_data } => AppState::Create {
+                lookup_data: lookup_data.clone(),
+            },
+            AppState::Create { lookup_data } => AppState::Login {
+                lookup_data: lookup_data.clone(),
+            },
+            // Do nothing for other states
+            _ => return,
+        };
+        self.set_app_state(next_state)
+    }
+
+    /// Sets the app state to the provided `state` then
+    /// triggers a UI update
+    fn set_app_state(&self, state: AppState) {
+        // Swap the state so the old state can be accessed
+        let mut old_state = state;
+        std::mem::swap(&mut *self.app_state.borrow_mut(), &mut old_state);
+
+        // Stop the server tasks if we were running
+        if let AppState::Running { .. } = old_state {
+            stop_server_tasks();
+        }
+
+        // Update the current UI
+        self.update_visible_frame();
+    }
+
+    /// Collection of available frames
+    fn all_frames(&self) -> [&Frame; 4] {
+        [
+            &self.connect_frame,
+            &self.login_frame,
+            &self.create_frame,
+            &self.running_frame,
+        ]
+    }
+
+    /// Sets the current visible frame to `frame` hiding
+    /// and disabling all the other frames.
+    fn set_visible_frame(&self, frame: &Frame) {
+        // Access all frames
+        self.all_frames()
+            .into_iter()
+            // Hide all the frames
+            .for_each(|frame| {
+                frame.set_visible(false);
+                frame.set_enabled(false);
+                self.grid.remove_child(frame);
+            });
+
+        // Show the specific frame
+        frame.set_visible(true);
+        frame.set_enabled(true);
+        self.grid.add_child(0, 0, frame);
+    }
+
+    /// Updates the currently visible frame to match the UI
+    /// and resizes the window to fit accordingly
+    fn update_visible_frame(&self) {
+        match &*self.app_state.borrow() {
+            AppState::Connect => {
+                self.set_visible_frame(&self.connect_frame);
+                self.window.set_size(500, 240);
+            }
+            AppState::Login { .. } => {
+                self.set_visible_frame(&self.login_frame);
+                self.window.set_size(500, 300);
+            }
+            AppState::Create { .. } => {
+                self.set_visible_frame(&self.create_frame);
+                self.window.set_size(500, 380);
+            }
+            AppState::Running { lookup_data, .. } => {
+                self.set_visible_frame(&self.running_frame);
+                self.window.set_size(500, 120);
+
+                let text = format!(
+                    "Connected: {} {} version v{}",
+                    lookup_data.url.scheme(),
+                    lookup_data.url.authority(),
+                    lookup_data.version
+                );
+                self.running_ui.state_label.set_text(&text)
+            }
         }
     }
 
-    fn handle_login(&self) {}
-    fn handle_create(&self) {}
+    fn handle_login(&self) {
+        let AppState::Login { lookup_data } = &*self.app_state.borrow() else {
+            return;
+        };
+
+        self.login_ui.state_label.set_text("Authenticating...");
+
+        let email = self.login_ui.email_input.text();
+        let password = self.login_ui.password_input.text();
+
+        let request = LoginUserRequest { email, password };
+
+        let http_client = self.http_client.clone();
+        let lookup_data = lookup_data.clone();
+
+        let sender = self.next_state_notice.sender();
+        let next_state = self.next_state.clone();
+
+        tokio::spawn(async move {
+            let base_url: Url = lookup_data.url.as_ref().clone();
+
+            let auth_token = match login_user(http_client, base_url, request).await {
+                Ok(value) => value,
+                Err(err) => {
+                    error_message("Failed to login", &err.to_string());
+                    return;
+                }
+            };
+
+            let next_state = &mut *next_state.lock();
+            *next_state = Some(AppState::Running {
+                lookup_data,
+                auth_token,
+            });
+            sender.notice();
+        });
+    }
+
+    fn handle_create(&self) {
+        let AppState::Create { lookup_data } = &*self.app_state.borrow() else {
+            return;
+        };
+
+        self.create_ui.state_label.set_text("Creating account...");
+
+        let email = self.create_ui.email_input.text();
+        let username = self.create_ui.username_input.text();
+        let password = self.create_ui.password_input.text();
+
+        let request = CreateUserRequest {
+            email,
+            username,
+            password,
+        };
+
+        let http_client = self.http_client.clone();
+        let lookup_data = lookup_data.clone();
+
+        let sender = self.next_state_notice.sender();
+        let next_state = self.next_state.clone();
+
+        tokio::spawn(async move {
+            let base_url: Url = lookup_data.url.as_ref().clone();
+
+            let auth_token = match create_user(http_client, base_url, request).await {
+                Ok(value) => value,
+                Err(err) => {
+                    error_message("Failed to create account", &err.to_string());
+                    return;
+                }
+            };
+
+            let next_state = &mut *next_state.lock();
+            *next_state = Some(AppState::Running {
+                lookup_data,
+                auth_token,
+            });
+            sender.notice();
+        });
+    }
+
+    fn handle_disconnect(&self) {
+        self.set_app_state(AppState::Connect);
+    }
 
     /// Handles the "Set" button being pressed, dispatches a connect task
     /// that will wake up the App with `App::handle_connect_notice` to
     /// handle the connection result.
-    fn handle_set(&self) {
-        // Abort any existing connection tasks
-        if let Some(task) = self.connect_task.take() {
-            task.abort();
-        }
+    fn handle_connect(&self) {
+        let target = self.connect_ui.target_url_input.text();
 
-        // Handle disconnecting
-        if has_server_tasks() {
-            stop_server_tasks();
-            self.connection_label.set_text("Not connected");
-            self.set_button.set_text("Connect");
-            return;
-        }
-
-        self.connection_label.set_text("Connecting...");
-        let target = self.target_url_input.text().to_string();
-        let sender = self.connect_notice.sender();
         let http_client = self.http_client.clone();
+        let sender = self.next_state_notice.sender();
+        let next_state = self.next_state.clone();
 
-        let task = tokio::spawn(async move {
-            let result = lookup_server(http_client, target).await;
-            sender.notice();
-            result
-        });
-
-        *self.connect_task.borrow_mut() = Some(task);
-    }
-
-    /// Handles the connection complete notice updating the UI
-    /// with the new connection state from the task result
-    fn handle_connect_notice(&self) {
-        let result = self
-            .connect_task
-            .borrow_mut()
-            .take()
-            // Flatten on the join result
-            .and_then(FutureExt::now_or_never)
-            // Flatten join failure errors (Out of our control)
-            .and_then(Result::ok);
-
-        // Ensure theres actually a result to use
-        let Some(result) = result else { return };
-
-        let lookup = match result {
-            Ok(value) => value,
-            Err(err) => {
-                self.connection_label.set_text("Failed to connect");
-                error_message("Failed to connect", &err.to_string());
-                return;
-            }
-        };
-
-        // // Start the servers
-        // start_all_servers(
-        //     self.http_client.clone(),
-        //     lookup.url.clone(),
-        //     lookup.association.clone(),
-        // );
-
-        let remember = self.remember_checkbox.check_state() == CheckBoxState::Checked;
+        let remember = self.connect_ui.remember_checkbox.check_state() == CheckBoxState::Checked;
 
         // Save the connection URL
         if remember {
-            let connection_url = lookup.url.to_string();
+            let connection_url = target.to_string();
             write_config_file(ClientConfig { connection_url });
         }
 
-        let text = format!(
-            "Connected: {} {} version v{}",
-            lookup.url.scheme(),
-            lookup.url.authority(),
-            lookup.version
-        );
-        self.connection_label.set_text(&text)
+        tokio::spawn(async move {
+            let lookup_data = match lookup_server(http_client, target).await {
+                Ok(value) => value,
+                Err(err) => {
+                    error_message("Failed to lookup server", &err.to_string());
+                    return;
+                }
+            };
+
+            let next_state = &mut *next_state.lock();
+            *next_state = Some(AppState::Login { lookup_data });
+            sender.notice();
+        });
     }
 }
 
@@ -305,18 +552,19 @@ pub fn init(config: Option<ClientConfig>, client: Client) {
     })
     .expect("Failed to build native UI");
 
-    app.swap_ui();
-
     let (target, remember) = config
         .map(|value| (value.connection_url, true))
         .unwrap_or_default();
 
-    app.target_url_input.set_text(&target);
+    app.connect_ui.target_url_input.set_text(&target);
 
     if remember {
-        app.remember_checkbox
+        app.connect_ui
+            .remember_checkbox
             .set_check_state(CheckBoxState::Checked);
     }
+
+    app.set_app_state(AppState::Connect);
 
     dispatch_thread_events();
 

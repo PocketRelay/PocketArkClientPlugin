@@ -65,7 +65,7 @@ fn detach() {
 }
 
 /// Attempts to load an identity file if one is present
-fn load_identity() -> Option<reqwest::Identity> {
+pub fn load_identity() -> Option<reqwest::Identity> {
     // Load the client identity
     let identity_file = Path::new("pocket-ark-identity.p12");
 

@@ -34,6 +34,8 @@ native-windows-derive = { version = "1" }
 
 futures = "0.3"
 
+parking_lot = "0.12"
+
 # Tokio async runtime
 [dependencies.tokio]
 version = "1"
