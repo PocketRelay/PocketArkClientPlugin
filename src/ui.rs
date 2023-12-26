@@ -56,24 +56,6 @@ pub struct ConnectPartial {
     state_label: Label,
 }
 
-/// Partial UI for the running state
-#[derive(NwgPartial, Default)]
-pub struct RunningPartial {
-    /// Grid layout for all the content
-    #[nwg_layout]
-    grid: GridLayout,
-
-    /// Connection state label
-    #[nwg_control(text: "Connected")]
-    #[nwg_layout_item(layout: grid, row: 0)]
-    state_label: Label,
-
-    /// Button for disconnecting
-    #[nwg_control(text: "Disconnect")]
-    #[nwg_layout_item(layout: grid, row: 1)]
-    disconnect_button: Button,
-}
-
 /// Partial UI for the login screen
 #[derive(NwgPartial, Default)]
 pub struct LoginPartial {
@@ -115,6 +97,11 @@ pub struct LoginPartial {
     #[nwg_control(text: "Don't have an account? Create")]
     #[nwg_layout_item(layout: grid, row: 6)]
     swap_button: Button,
+
+    /// Button for disconnecting
+    #[nwg_control(text: "Disconnect")]
+    #[nwg_layout_item(layout: grid, row: 7)]
+    disconnect_button: Button,
 }
 
 /// Partial UI for the create account screen
@@ -168,6 +155,29 @@ pub struct CreatePartial {
     #[nwg_control(text: "Already have an account? Login")]
     #[nwg_layout_item(layout: grid, row: 8)]
     swap_button: Button,
+
+    /// Button for disconnecting
+    #[nwg_control(text: "Disconnect")]
+    #[nwg_layout_item(layout: grid, row: 9)]
+    disconnect_button: Button,
+}
+
+/// Partial UI for the running state
+#[derive(NwgPartial, Default)]
+pub struct RunningPartial {
+    /// Grid layout for all the content
+    #[nwg_layout]
+    grid: GridLayout,
+
+    /// Connection state label
+    #[nwg_control(text: "Connected")]
+    #[nwg_layout_item(layout: grid, row: 0)]
+    state_label: Label,
+
+    /// Button for disconnecting
+    #[nwg_control(text: "Disconnect")]
+    #[nwg_layout_item(layout: grid, row: 1)]
+    disconnect_button: Button,
 }
 
 /// Native GUI app
@@ -212,6 +222,7 @@ pub struct App {
     #[nwg_events(
         (login_button, OnButtonClick): [App::handle_login],
         (swap_button, OnButtonClick): [App::swap_auth_state],
+        (disconnect_button, OnButtonClick): [App::handle_disconnect],
     )]
     login_ui: LoginPartial,
 
@@ -225,6 +236,7 @@ pub struct App {
     #[nwg_events(
         (create_button, OnButtonClick): [App::handle_create],
         (swap_button, OnButtonClick): [App::swap_auth_state],
+        (disconnect_button, OnButtonClick): [App::handle_disconnect],
     )]
     create_ui: CreatePartial,
 
@@ -410,13 +422,13 @@ impl App {
             }
             AppState::Login { .. } => {
                 self.set_visible_frame(&self.login_frame);
-                self.window.set_size(500, 300);
+                self.window.set_size(500, 320);
 
                 self.login_ui.state_label.set_text("Not authenticated");
             }
             AppState::Create { .. } => {
                 self.set_visible_frame(&self.create_frame);
-                self.window.set_size(500, 380);
+                self.window.set_size(500, 400);
 
                 self.create_ui.state_label.set_text("Not authenticated");
             }
