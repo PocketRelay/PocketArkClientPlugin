@@ -32,8 +32,6 @@ env_logger = "0.10"
 native-windows-gui = { version = "1", features = ["notice"] }
 native-windows-derive = { version = "1" }
 
-futures = "0.3"
-
 parking_lot = "0.12"
 
 # Tokio async runtime
