@@ -53,7 +53,7 @@ pub struct ConnectPartial {
     /// Label for the state
     #[nwg_control(text: "Disconnected")]
     #[nwg_layout_item(layout: grid, row: 4)]
-    connecting_label: Label,
+    state_label: Label,
 }
 
 /// Partial UI for the running state
@@ -243,7 +243,7 @@ pub struct App {
 
     /// Shared reference for an optional next state decided by
     /// some other thread or callback
-    next_state: Arc<Mutex<Option<AppState>>>,
+    next_state: Arc<Mutex<Option<NextState>>>,
 
     /// Notice for when [App::next_state] is changed
     #[nwg_control]
@@ -252,6 +252,14 @@ pub struct App {
 
     /// Http client for sending requests
     http_client: Client,
+}
+
+enum NextState {
+    /// Don't change the state just update the screen
+    /// state label to show an error occured
+    Error,
+    /// App State to show
+    State(AppState),
 }
 
 #[derive(Default)]
@@ -286,28 +294,47 @@ impl App {
             return;
         };
 
-        // Handle setting up the next state
-        match &next_state {
-            AppState::Connect => {}
-            AppState::Login { .. } => {}
-            AppState::Create { .. } => {}
-            AppState::Running {
-                lookup_data,
-                auth_token,
-            } => {
-                // TODO: Update connection state
+        match next_state {
+            // Set error labels
+            NextState::Error => match &*self.app_state.borrow() {
+                AppState::Connect => {
+                    self.connect_ui.state_label.set_text("Failed to connect");
+                }
+                AppState::Login { .. } => {
+                    self.login_ui.state_label.set_text("Failed to login");
+                }
+                AppState::Create { .. } => {
+                    self.create_ui.state_label.set_text("Failed to create");
+                }
+                _ => {}
+            },
 
-                // Start all the servers
-                start_all_servers(
-                    self.http_client.clone(),
-                    lookup_data.url.clone(),
-                    Arc::new(None),
-                    auth_token.clone(),
-                );
+            // Handle changing state
+            NextState::State(next_state) => {
+                // Handle setting up the next state
+                match &next_state {
+                    AppState::Connect => {}
+                    AppState::Login { .. } => {}
+                    AppState::Create { .. } => {}
+                    AppState::Running {
+                        lookup_data,
+                        auth_token,
+                    } => {
+                        // TODO: Update connection state
+
+                        // Start all the servers
+                        start_all_servers(
+                            self.http_client.clone(),
+                            lookup_data.url.clone(),
+                            Arc::new(None),
+                            auth_token.clone(),
+                        );
+                    }
+                }
+
+                self.set_app_state(next_state);
             }
         }
-
-        self.set_app_state(next_state);
     }
 
     /// Swaps the current authentication state to the opposite
@@ -378,14 +405,20 @@ impl App {
             AppState::Connect => {
                 self.set_visible_frame(&self.connect_frame);
                 self.window.set_size(500, 240);
+
+                self.connect_ui.state_label.set_text("Not connected");
             }
             AppState::Login { .. } => {
                 self.set_visible_frame(&self.login_frame);
                 self.window.set_size(500, 300);
+
+                self.login_ui.state_label.set_text("Not authenticated");
             }
             AppState::Create { .. } => {
                 self.set_visible_frame(&self.create_frame);
                 self.window.set_size(500, 380);
+
+                self.create_ui.state_label.set_text("Not authenticated");
             }
             AppState::Running { lookup_data, .. } => {
                 self.set_visible_frame(&self.running_frame);
@@ -400,6 +433,41 @@ impl App {
                 self.running_ui.state_label.set_text(&text)
             }
         }
+    }
+
+    /// Handles the "Set" button being pressed, dispatches a connect task
+    /// that will wake up the App with `App::handle_connect_notice` to
+    /// handle the connection result.
+    fn handle_connect(&self) {
+        self.connect_ui.state_label.set_text("Connecting...");
+
+        let target = self.connect_ui.target_url_input.text();
+
+        let http_client = self.http_client.clone();
+        let sender = self.next_state_notice.sender();
+        let next_state = self.next_state.clone();
+
+        let remember = self.connect_ui.remember_checkbox.check_state() == CheckBoxState::Checked;
+
+        // Save the connection URL
+        if remember {
+            let connection_url = target.to_string();
+            write_config_file(ClientConfig { connection_url });
+        }
+
+        tokio::spawn(async move {
+            let state = match lookup_server(http_client, target).await {
+                Ok(lookup_data) => NextState::State(AppState::Login { lookup_data }),
+                Err(err) => {
+                    error_message("Failed to lookup server", &err.to_string());
+                    NextState::Error
+                }
+            };
+
+            let next_state = &mut *next_state.lock();
+            *next_state = Some(state);
+            sender.notice();
+        });
     }
 
     fn handle_login(&self) {
@@ -423,19 +491,19 @@ impl App {
         tokio::spawn(async move {
             let base_url: Url = lookup_data.url.as_ref().clone();
 
-            let auth_token = match login_user(http_client, base_url, request).await {
-                Ok(value) => value,
+            let state = match login_user(http_client, base_url, request).await {
+                Ok(auth_token) => NextState::State(AppState::Running {
+                    lookup_data,
+                    auth_token,
+                }),
                 Err(err) => {
                     error_message("Failed to login", &err.to_string());
-                    return;
+                    NextState::Error
                 }
             };
 
             let next_state = &mut *next_state.lock();
-            *next_state = Some(AppState::Running {
-                lookup_data,
-                auth_token,
-            });
+            *next_state = Some(state);
             sender.notice();
         });
     }
@@ -466,58 +534,25 @@ impl App {
         tokio::spawn(async move {
             let base_url: Url = lookup_data.url.as_ref().clone();
 
-            let auth_token = match create_user(http_client, base_url, request).await {
-                Ok(value) => value,
+            let state = match create_user(http_client, base_url, request).await {
+                Ok(auth_token) => NextState::State(AppState::Running {
+                    lookup_data,
+                    auth_token,
+                }),
                 Err(err) => {
                     error_message("Failed to create account", &err.to_string());
-                    return;
+                    NextState::Error
                 }
             };
 
             let next_state = &mut *next_state.lock();
-            *next_state = Some(AppState::Running {
-                lookup_data,
-                auth_token,
-            });
+            *next_state = Some(state);
             sender.notice();
         });
     }
 
     fn handle_disconnect(&self) {
         self.set_app_state(AppState::Connect);
-    }
-
-    /// Handles the "Set" button being pressed, dispatches a connect task
-    /// that will wake up the App with `App::handle_connect_notice` to
-    /// handle the connection result.
-    fn handle_connect(&self) {
-        let target = self.connect_ui.target_url_input.text();
-
-        let http_client = self.http_client.clone();
-        let sender = self.next_state_notice.sender();
-        let next_state = self.next_state.clone();
-
-        let remember = self.connect_ui.remember_checkbox.check_state() == CheckBoxState::Checked;
-
-        // Save the connection URL
-        if remember {
-            let connection_url = target.to_string();
-            write_config_file(ClientConfig { connection_url });
-        }
-
-        tokio::spawn(async move {
-            let lookup_data = match lookup_server(http_client, target).await {
-                Ok(value) => value,
-                Err(err) => {
-                    error_message("Failed to lookup server", &err.to_string());
-                    return;
-                }
-            };
-
-            let next_state = &mut *next_state.lock();
-            *next_state = Some(AppState::Login { lookup_data });
-            sender.notice();
-        });
     }
 }
 
