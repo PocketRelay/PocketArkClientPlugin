@@ -19,7 +19,7 @@ use std::{cell::RefCell, sync::Arc};
 /// Size of the created window
 pub const WINDOW_SIZE: (i32, i32) = (500, 400);
 /// Title used for the created window
-pub const WINDOW_TITLE: &str = concat!("Pocket Ark Client v", env!("CARGO_PKG_VERSION"));
+pub const WINDOW_TITLE: &str = concat!("Pocket Ark Plugin Client v", env!("CARGO_PKG_VERSION"));
 /// Window icon bytes
 pub const ICON_BYTES: &[u8] = include_bytes!("resources/icon.ico");
 
