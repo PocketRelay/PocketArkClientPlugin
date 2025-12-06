@@ -15,6 +15,7 @@ use windows_sys::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS
 pub mod config;
 pub mod hooks;
 pub mod servers;
+pub mod threads;
 pub mod ui;
 
 /// Constant storing the application version
@@ -33,8 +34,15 @@ fn attach() {
         .filter_module("pocket_ark_client_plugin", log::LevelFilter::Debug)
         .init();
 
-    // Apply the host lookup hook
-    unsafe { hooks::hook_host_lookup() };
+    log_panics::init();
+
+    // Suspend all game threads so the user has a chance to connect to a server
+    threads::suspend_all_threads();
+
+    // Apply hooks
+    std::thread::spawn(|| {
+        unsafe { hooks::apply_hooks() };
+    });
 
     // Load the config file
     let config = read_config_file();
@@ -52,10 +60,10 @@ fn attach() {
     });
 }
 
-/// Handles the plugin being deta   ched from the game, this handles
+/// Handles the plugin being detached from the game, this handles
 /// cleaning up any extra allocated resources
 fn detach() {
-    // Debug console must be freed on detatch
+    // Debug console must be freed on detach
     #[cfg(debug_assertions)]
     {
         unsafe {
@@ -90,10 +98,11 @@ pub fn load_identity() -> Option<reqwest::Identity> {
 
 /// Windows DLL entrypoint for the plugin
 #[no_mangle]
-extern "stdcall" fn DllMain(_hmodule: isize, reason: u32, _: *mut ()) -> bool {
+#[allow(non_snake_case)]
+extern "system" fn DllMain(_hmodule: isize, reason: u32, _: *mut ()) -> bool {
     match reason {
         // Handle attaching
-        DLL_PROCESS_ATTACH => attach(),
+        DLL_PROCESS_ATTACH => _ = std::thread::spawn(attach),
         // Handle detaching
         DLL_PROCESS_DETACH => detach(),
         _ => {}

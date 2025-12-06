@@ -6,12 +6,14 @@ use crate::{
         servers::stop_server_tasks,
     },
     servers::start_all_servers,
+    threads::resume_all_threads,
 };
 use native_windows_derive::{NwgPartial, NwgUi};
 use native_windows_gui::{init as nwg_init, *};
 use parking_lot::Mutex;
 use pocket_ark_client_shared::{
     api::{create_user, login_user, AuthToken, CreateUserRequest, LoginUserRequest},
+    ctx::ClientContext,
     Url,
 };
 use std::{cell::RefCell, sync::Arc};
@@ -268,7 +270,7 @@ pub struct App {
 
 enum NextState {
     /// Don't change the state just update the screen
-    /// state label to show an error occured
+    /// state label to show an error occurred
     Error,
     /// App State to show
     State(AppState),
@@ -332,15 +334,19 @@ impl App {
                         lookup_data,
                         auth_token,
                     } => {
-                        // TODO: Update connection state
+                        let ctx = Arc::new(ClientContext {
+                            http_client: self.http_client.clone(),
+                            base_url: lookup_data.url.clone(),
+                            association: lookup_data.association.clone(),
+                            tunnel_port: lookup_data.tunnel_port,
+                            token: auth_token.clone(),
+                        });
 
                         // Start all the servers
-                        start_all_servers(
-                            self.http_client.clone(),
-                            lookup_data.url.clone(),
-                            Arc::new(None),
-                            auth_token.clone(),
-                        );
+                        start_all_servers(ctx);
+
+                        // Resume game threads
+                        resume_all_threads();
                     }
                 }
 
@@ -501,7 +507,7 @@ impl App {
         let next_state = self.next_state.clone();
 
         tokio::spawn(async move {
-            let base_url: Url = lookup_data.url.as_ref().clone();
+            let base_url: Url = lookup_data.url.clone();
 
             let state = match login_user(http_client, base_url, request).await {
                 Ok(auth_token) => NextState::State(AppState::Running {
@@ -544,7 +550,7 @@ impl App {
         let next_state = self.next_state.clone();
 
         tokio::spawn(async move {
-            let base_url: Url = lookup_data.url.as_ref().clone();
+            let base_url: Url = lookup_data.url.clone();
 
             let state = match create_user(http_client, base_url, request).await {
                 Ok(auth_token) => NextState::State(AppState::Running {
@@ -614,6 +620,9 @@ pub fn init(config: Option<ClientConfig>, client: Client) {
     app.set_app_state(AppState::Connect);
 
     dispatch_thread_events();
+
+    // Resume the game threads if we close the UI
+    resume_all_threads();
 
     // Block for CTRL+C to keep servers alive when window closes
     let shutdown_signal = tokio::signal::ctrl_c();
