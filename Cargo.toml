@@ -34,6 +34,7 @@ native-windows-gui = { version = "1", features = ["notice"] }
 native-windows-derive = { version = "1" }
 
 parking_lot = "0.12"
+retour = "0.3.1"
 
 # Tokio async runtime
 [dependencies.tokio]
@@ -55,6 +56,8 @@ features = [
     "Win32_Networking_WinSock",
     # APIs to suspend threads
     "Win32_System_Diagnostics_ToolHelp",
+    # Library loading
+    "Win32_System_LibraryLoader",
 ]
 
 # Compile x86

@@ -1,5 +1,6 @@
 use log::debug;
 
+pub mod connect;
 pub mod host_lookup;
 pub mod mem;
 
@@ -8,5 +9,7 @@ pub mod mem;
 pub unsafe fn apply_hooks() {
     debug!("apply host lookup");
     host_lookup::hook_host_lookup();
-    debug!("all hooks applied")
+    debug!("apply connect");
+    connect::hook();
+    debug!("all hooks applied");
 }
