@@ -1,28 +1,34 @@
 use log::{debug, warn};
 use pocket_ark_client_shared::servers::has_server_tasks;
-use std::{ffi::CStr, mem::size_of, ptr::null_mut};
+use retour::GenericDetour;
+use std::{ffi::CStr, mem::size_of, ptr::null_mut, sync::LazyLock};
 use windows_sys::{
     core::PCSTR,
-    Win32::Networking::WinSock::{getaddrinfo, ADDRINFOA, AF_INET, SOCKADDR},
+    Win32::{
+        Networking::WinSock::{getaddrinfo, ADDRINFOA, AF_INET, SOCKADDR},
+        System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
+    },
 };
 
 use crate::hooks::mem::{find_pattern, use_memory};
 
-/// Address to start matching from
-const HOST_LOOKUP_START_OFFSET: usize = 0x0000000140100000;
-/// Address to end matching at
-const HOST_LOOKUP_END_OFFSET: usize = 0x0000000200000000;
-/// Mask to use while matching the opcodes below
-const HOST_LOOKUP_MASK: &str = "xx????xxxxxxxxxxxxxxxxx";
-/// Op codes to match against
-const HOST_LOOKUP_OP_CODES: &[u8] = &[
-    0xFF, 0x15, 0x10, 0x09, 0xE9, 0x01, // call   QWORD PTR [rip+0x1e90910]
-    0x85, 0xC0, // test eax,eax
-    0x75, 0x52, // jne  0x5c
-    0x48, 0x8B, 0x44, 0x24, 0x68, // mov rax,QWORD PTR [rsp+0x68]
-    0x48, 0x8D, 0x53, 0x18, // lea rdx, [rbx+0x18]
-    0x4C, 0x8B, 0x40, 0x20, // mov r8, QWORD PTR [rax+0x20]
-];
+type GetAddrInfoFn =
+    unsafe extern "system" fn(PCSTR, PCSTR, *const ADDRINFOA, *mut *mut ADDRINFOA) -> i32;
+
+static HOOK_GET_ADDR_INFO: LazyLock<GenericDetour<GetAddrInfoFn>> = LazyLock::new(|| {
+    let ws2_32 = unsafe { GetModuleHandleA(b"ws2_32.dll\0".as_ptr()) };
+    if ws2_32 == 0 {
+        panic!("Failed to obtain handle for ws2_32.dll");
+    }
+
+    let target_addr = unsafe { GetProcAddress(ws2_32, b"getaddrinfo\0".as_ptr()) };
+    let Some(target_fn) = target_addr else {
+        panic!("Failed to locate address of getaddrinfo() inside ws2_32.dll");
+    };
+
+    let ori: GetAddrInfoFn = unsafe { std::mem::transmute(target_addr) };
+    return unsafe { GenericDetour::new(ori, fake_getaddrinfo).unwrap() };
+});
 
 /// Allocates the provided object on the heap, leaking it
 /// immediately. Used by `fake_getaddrinfo` since the `freeaddrinfo`
@@ -73,36 +79,9 @@ pub unsafe extern "system" fn fake_getaddrinfo(
     }
 
     // Fallback to default implementation
-    getaddrinfo(pnodename, pservicename, phints, ppresult)
+    HOOK_GET_ADDR_INFO.call(pnodename, pservicename, phints, ppresult)
 }
 
-/// Hooks the `getaddrinfo` function to handle replacing host
-/// lookups with localhost for hijacking requests.
-///
-/// Last known address (In decrypted copy): 00 00 7F FE B6 5C 3C E0
 pub unsafe fn hook_host_lookup() {
-    // Attempt to find the calling pattern
-    let Some(addr) = find_pattern(
-        HOST_LOOKUP_START_OFFSET,
-        HOST_LOOKUP_END_OFFSET,
-        HOST_LOOKUP_MASK,
-        HOST_LOOKUP_OP_CODES,
-    ) else {
-        warn!("Failed to find getaddrinfo call hook position");
-        return;
-    };
-
-    debug!("Found getaddrinfo call @ {:#016x}", addr as usize);
-
-    // Find the relative jump distance
-    let distance = *(addr.add(2 /* Skip call opcode */) as *const u32);
-
-    // Get a pointer to the value in the thunk table (Points to the actual function address)
-    let thunk_addr = addr.add(6 /* Skip call opcode + address */ + distance as usize);
-
-    use_memory(thunk_addr, size_of::<usize>(), |addr| {
-        // Replace the address with our faker function
-        let ptr: *mut usize = addr as *mut usize;
-        *ptr = fake_getaddrinfo as usize;
-    });
+    HOOK_GET_ADDR_INFO.enable();
 }
