@@ -1,4 +1,5 @@
 use log::{debug, error, warn};
+use pocket_ark_client_shared::servers::HTTP_PORT;
 use retour::GenericDetour;
 use std::mem::size_of;
 use std::{ffi::CStr, sync::LazyLock};
@@ -39,7 +40,8 @@ pub unsafe extern "system" fn fake_connect(s: SOCKET, name: *const SOCKADDR, nam
                 && bytes.s_b4 == 1
                 && port == 443
             {
-                sockaddr_in.sin_port = 8443u16.to_be();
+                let port: u16 = HTTP_PORT;
+                sockaddr_in.sin_port = port.to_be();
             }
         }
     }

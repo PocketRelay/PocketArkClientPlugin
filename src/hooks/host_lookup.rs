@@ -38,6 +38,10 @@ fn heap_alloc<T>(value: T) -> &'static mut T {
     Box::leak(Box::new(value))
 }
 
+/// Static localhost hostname to use for faking
+static LOCALHOST_NODE_NAME: &'static CStr =
+    unsafe { CStr::from_bytes_with_nul_unchecked(b"localhost\0") };
+
 #[no_mangle]
 pub unsafe extern "system" fn fake_getaddrinfo(
     pnodename: PCSTR,
@@ -52,30 +56,15 @@ pub unsafe extern "system" fn fake_getaddrinfo(
     if nodename.to_bytes() == b"winter15.gosredirector.ea.com" && has_server_tasks() {
         debug!("Responding with localhost redirect");
 
-        let hinits = &*phints;
-
-        // Create the socket address
-        let addr = heap_alloc(SOCKADDR {
-            sa_family: AF_INET,
-            sa_data: [0, 0, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-        });
-
-        // Create the address info response
-        let addr_info = heap_alloc(ADDRINFOA {
-            ai_flags: 0,
-            ai_family: AF_INET as i32,
-            ai_socktype: hinits.ai_socktype,
-            ai_protocol: hinits.ai_protocol,
-            ai_addrlen: std::mem::size_of::<SOCKADDR>(),
-            ai_canonname: null_mut(),
-            ai_addr: addr,
-            ai_next: null_mut(),
-        });
-
-        // Set the result
-        *ppresult = addr_info;
-
-        return 0;
+        // Call the underlying implementation but using localhost instead of the requested address
+        // this is better than leaking memory ourselves since it ensures the correct response always
+        // and prevents unbounded memory growth
+        return HOOK_GET_ADDR_INFO.call(
+            LOCALHOST_NODE_NAME.as_ptr().cast(),
+            pservicename,
+            phints,
+            ppresult,
+        );
     }
 
     // Fallback to default implementation
