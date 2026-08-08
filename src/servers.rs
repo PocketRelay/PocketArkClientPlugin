@@ -34,8 +34,8 @@ pub fn start_all_servers(ctx: Arc<ClientContext>) {
     run_server(qos, "qos");
 
     // Spawn the tunneling server
-    let tunnel = start_tunnel_server(ctx);
-    run_server(tunnel, "tunnel");
+    // let tunnel = start_tunnel_server(ctx);
+    // run_server(tunnel, "tunnel");
 }
 
 /// Runs the tunnel server, if a tunnel port is available a UDP tunnel will be
