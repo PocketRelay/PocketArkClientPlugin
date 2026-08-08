@@ -42,6 +42,13 @@ fn heap_alloc<T>(value: T) -> &'static mut T {
 static LOCALHOST_NODE_NAME: &'static CStr =
     unsafe { CStr::from_bytes_with_nul_unchecked(b"localhost\0") };
 
+static LOCALHOST_REDIRECTS: &[&[u8]] = &[
+    b"winter15.gosredirector.ea.com",
+    b"pin-em.data.ea.com",
+    b"pin-river.data.ea.com",
+    b"mea-public.biowareonline.net",
+];
+
 #[no_mangle]
 pub unsafe extern "system" fn fake_getaddrinfo(
     pnodename: PCSTR,
@@ -53,7 +60,7 @@ pub unsafe extern "system" fn fake_getaddrinfo(
     let nodename = CStr::from_ptr(pnodename.cast());
     debug!("Host lookup: {:?}", nodename);
 
-    if nodename.to_bytes() == b"winter15.gosredirector.ea.com" && has_server_tasks() {
+    if LOCALHOST_REDIRECTS.contains(&nodename.to_bytes()) && has_server_tasks() {
         debug!("Responding with localhost redirect");
 
         // Call the underlying implementation but using localhost instead of the requested address

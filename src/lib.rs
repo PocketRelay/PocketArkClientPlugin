@@ -32,6 +32,7 @@ fn attach() {
     // Initialize logging
     env_logger::builder()
         .filter_module("pocket_ark_client_plugin", log::LevelFilter::Debug)
+        .filter_module("pocket_ark_client_shared", log::LevelFilter::Debug)
         .init();
 
     log_panics::init();

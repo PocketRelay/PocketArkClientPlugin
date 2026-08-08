@@ -34,6 +34,12 @@ pub unsafe extern "system" fn fake_connect(s: SOCKET, name: *const SOCKADDR, nam
         if sockaddr_in.sin_family == AF_INET {
             let bytes = sockaddr_in.sin_addr.S_un.S_un_b;
             let port = u16::from_be(sockaddr_in.sin_port);
+
+            debug!(
+                "connect attempt to {}.{}.{}.{}:{}",
+                bytes.s_b1, bytes.s_b2, bytes.s_b3, bytes.s_b4, port
+            );
+
             if bytes.s_b1 == 127
                 && bytes.s_b2 == 0
                 && bytes.s_b3 == 0
