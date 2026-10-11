@@ -1,6 +1,7 @@
 use crate::{
     core::{servers::*, ssl::create_ssl_context},
     ui::error_message,
+    virtual_peer::tunnel_ports_callback,
 };
 use log::error;
 use pocket_ark_client_shared::ctx::ClientContext;
@@ -34,8 +35,8 @@ pub fn start_all_servers(ctx: Arc<ClientContext>) {
     run_server(qos, "qos");
 
     // Spawn the tunneling server
-    // let tunnel = start_tunnel_server(ctx);
-    // run_server(tunnel, "tunnel");
+    let tunnel = start_tunnel_server(ctx);
+    run_server(tunnel, "tunnel");
 }
 
 /// Runs the tunnel server, if a tunnel port is available a UDP tunnel will be
@@ -46,7 +47,13 @@ async fn start_tunnel_server(ctx: Arc<ClientContext>) -> std::io::Result<()> {
     match ctx.tunnel_port {
         // When UDP tunnel server port is available use the faster UDP tunnel server
         Some(tunnel_port) => {
-            let err = match udp_tunnel::start_udp_tunnel_server(ctx.clone(), tunnel_port).await {
+            let err = match udp_tunnel::start_udp_tunnel_server(
+                ctx.clone(),
+                tunnel_port,
+                tunnel_ports_callback,
+            )
+            .await
+            {
                 // Encountered error with UDP tunnel
                 Err(err) => err,
                 // Server exited normally
@@ -59,10 +66,10 @@ async fn start_tunnel_server(ctx: Arc<ClientContext>) -> std::io::Result<()> {
             );
 
             // Error while connecting UDP tunnel, fallback to HTTP upgrade tunnel
-            tunnel::start_tunnel_server(ctx).await
+            tunnel::start_tunnel_server(ctx, tunnel_ports_callback).await
         }
         // When unavailable fallback to the HTTP upgrade tunnel
-        None => tunnel::start_tunnel_server(ctx).await,
+        None => tunnel::start_tunnel_server(ctx, tunnel_ports_callback).await,
     }
 }
 

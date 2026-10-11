@@ -44,20 +44,21 @@ features = ["full"]
 [dependencies.windows-sys]
 version = "0.48"
 features = [
-    # Foundational types
-    "Win32_Foundation",
-    # For DLL_PROCESS_ATTACH and DLL_PROCESS_DETACH constants
-    "Win32_System_SystemServices",
-    # Requried for virtual protecting memory
-    "Win32_System_Memory",
-    # Required for allocating consoles
-    "Win32_System_Console",
-    # Required for HOSTENT structure and gethostbyname function
-    "Win32_Networking_WinSock",
-    # APIs to suspend threads
-    "Win32_System_Diagnostics_ToolHelp",
-    # Library loading
-    "Win32_System_LibraryLoader",
+  # Foundational types
+  "Win32_Foundation",
+  # For DLL_PROCESS_ATTACH and DLL_PROCESS_DETACH constants
+  "Win32_System_SystemServices",
+  # Requried for virtual protecting memory
+  "Win32_System_Memory",
+  # Required for allocating consoles
+  "Win32_System_Console",
+  # Required for HOSTENT structure and gethostbyname function
+  "Win32_Networking_WinSock",
+  # APIs to suspend threads
+  "Win32_System_Diagnostics_ToolHelp",
+  # Library loading
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
 ]
 
 # Compile x86

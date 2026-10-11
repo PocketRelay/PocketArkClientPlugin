@@ -17,8 +17,9 @@ pub mod hooks;
 pub mod servers;
 pub mod threads;
 pub mod ui;
+pub mod virtual_peer;
 
-/// Constant storing the application version
+/// Constant storing the applicatimon version
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Handles the plugin being attached to the game

@@ -1,12 +1,16 @@
 use log::{debug, error, warn};
 use pocket_ark_client_shared::servers::HTTP_PORT;
+use pocket_ark_client_shared::virtual_peer::{get_virtual_peer_address, is_virtual_peer_address};
 use retour::GenericDetour;
 use std::mem::size_of;
 use std::{ffi::CStr, sync::LazyLock};
+use windows_sys::Win32::Networking::WinSock::IN_ADDR_0_0;
 use windows_sys::Win32::{
     Networking::WinSock::{connect, AF_INET, SOCKADDR, SOCKADDR_IN, SOCKET},
     System::LibraryLoader::{GetModuleHandleA, GetProcAddress, LoadLibraryA},
 };
+
+use crate::virtual_peer::tunnel_port_by_slot;
 
 type ConnectFn = unsafe extern "system" fn(SOCKET, *const SOCKADDR, i32) -> i32;
 
@@ -40,6 +44,7 @@ pub unsafe extern "system" fn fake_connect(s: SOCKET, name: *const SOCKADDR, nam
                 bytes.s_b1, bytes.s_b2, bytes.s_b3, bytes.s_b4, port
             );
 
+            // HTTPs connections to localhost are rerouted to our alternative HTTPS port
             if bytes.s_b1 == 127
                 && bytes.s_b2 == 0
                 && bytes.s_b3 == 0
