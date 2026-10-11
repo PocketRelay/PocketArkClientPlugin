@@ -3,9 +3,7 @@ use parking_lot::Mutex;
 static TUNNEL_UDP_PORTS: Mutex<Option<[u16; 4]>> = Mutex::new(None);
 
 pub fn tunnel_ports_callback(ports: [u16; 4]) {
-    log::info!("set ports {:?}", ports);
     let mut state = TUNNEL_UDP_PORTS.lock();
-
     *state = Some(ports);
 }
 
