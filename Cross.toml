@@ -1,0 +1,4 @@
+# Cross compiling is only used for dev debug builds, for targeting gnu we have to force NASM
+# to use prebuilt otherwise compiling will fail 
+[target.x86_64-pc-windows-gnu]
+env = { passthrough = ["AWS_LC_SYS_PREBUILT_NASM=1"] }

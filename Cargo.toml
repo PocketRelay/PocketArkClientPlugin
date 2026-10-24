@@ -13,7 +13,8 @@ keywords = ["Hooking"]
 crate-type = ["cdylib"]
 
 [dependencies]
-pocket-ark-client-shared = { version = "0.1", git = "https://github.com/PocketRelay/PocketArkClientShared.git", rev = "f9ec206776d048fc8e0aaea22d052d84e19547a7" }
+# pocket-ark-client-shared = { version = "0.0.1", git = "https://github.com/PocketRelay/PocketArkClientShared.git", rev = "f9ec206776d048fc8e0aaea22d052d84e19547a7" }
+pocket-ark-client-shared = { version = "0.0.1" }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
