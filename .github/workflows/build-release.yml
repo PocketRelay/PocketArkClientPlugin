@@ -53,7 +53,7 @@ jobs:
 
             # Copy built binary to output directory
             - name: Rename and move output binary
-              run: cp target/${{ matrix.target }}/release/pocket-ark-client-plugin.dll ${{ matrix.filename }}
+              run: cp target/${{ matrix.target }}/release/pocket_ark_client_plugin.dll ${{ matrix.filename }}
               shell: bash
 
             # Upload the built artifact
